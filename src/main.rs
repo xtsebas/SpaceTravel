@@ -143,6 +143,7 @@ fn main() {
     ];
 
     let mut focused_planet: Option<&Planet> = None;
+    let mut bird_eye_view = false;
     let mut time = 0.0;
 
     while window.is_open() {
@@ -150,7 +151,27 @@ fn main() {
             break;
         }
 
-        handle_input(&window, &mut camera);
+        // Alternar entre la vista normal y la "bird's eye view"
+        if window.is_key_pressed(Key::B, minifb::KeyRepeat::No) {
+            bird_eye_view = !bird_eye_view;
+            if bird_eye_view {
+                camera = Camera::new(
+                    Vec3::new(00.0, 500.0, 200.0), // Posición inicial
+                    Vec3::new(0.0, 0.0, 0.0),    // Centro (sol)
+                    Vec3::new(0.0, 1.0, 0.0),
+                );
+            } else {
+                // Restaurar la cámara a su posición inicial
+                camera.eye = Vec3::new(50.0, 100.0, 250.0);
+                camera.center = Vec3::new(0.0, 0.0, 0.0);
+            }
+        }
+
+        if !bird_eye_view {
+            // Permitir el control de la cámara solo si no estamos en "bird's eye view"
+            handle_input(&window, &mut camera);
+        }
+
         
         // Detectar teclas para enfoque en un planeta
         let planet_key_map = vec![
@@ -171,6 +192,7 @@ fn main() {
                     focused_planet = None;
                     camera.eye = Vec3::new(50.0, 100.0, 250.0);
                     camera.center = Vec3::new(0.0, 0.0, 0.0);
+                    bird_eye_view = false;
                 } else {
                     // Enfocar en el planeta seleccionado
                     focused_planet = Some(planet);
