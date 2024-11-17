@@ -2,6 +2,7 @@ use nalgebra_glm::{Vec3, Mat4};
 use minifb::{Key, Window, WindowOptions};
 use std::f32::consts::PI;
 use std::sync::Arc;
+use rand::Rng;
 use fastnoise_lite::{FastNoiseLite, NoiseType, FractalType};
 
 mod framebuffer;
@@ -22,6 +23,7 @@ use camera::Camera;
 use shaders::{vertex_shader, select_shader};
 use uniforms::{Uniforms, create_noise, create_model_matrix, create_view_matrix, create_perspective_matrix, create_viewport_matrix};
 
+#[derive(PartialEq)]
 struct Planet {
     name: &'static str,
     distance_from_sun: f32,
@@ -83,6 +85,10 @@ fn render_saturn_rings(framebuffer: &mut Framebuffer, uniforms: &Uniforms, verte
     }
 }
 
+fn interpolate_position(start: Vec3, end: Vec3, t: f32) -> Vec3 {
+    start * (1.0 - t) + end * t
+}
+
 fn main() {
     let window_width = 800;
     let window_height = 600;
@@ -101,12 +107,11 @@ fn main() {
     framebuffer.set_background_color(0x000000);
 
     let mut camera = Camera::new(
-        Vec3::new(50.0, 100.0, 250.0),
-        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(50.0, 100.0, 250.0), // Posición inicial
+        Vec3::new(0.0, 0.0, 0.0),     // Centro (sol)
         Vec3::new(0.0, 1.0, 0.0),
     );
 
-    // Cargar modelos para los planetas y Saturno
     let sphere_obj = Obj::load("assets/model/sphere.obj").expect("Failed to load sphere.obj");
     let sphere_vertex_arrays = sphere_obj.get_vertex_array();
 
@@ -127,7 +132,7 @@ fn main() {
     };
 
     let planets = vec![
-        Planet { name: "Sol", distance_from_sun: 0.0, radius: 3.0, orbit_speed: 0.001, color_index: 0 },
+        Planet { name: "Sol", distance_from_sun: 0.0, radius: 3.0, orbit_speed: 0.0, color_index: 0 },
         Planet { name: "Mercurio", distance_from_sun: 20.0, radius: 0.5, orbit_speed: 0.003, color_index: 1 },
         Planet { name: "Venus", distance_from_sun: 40.0, radius: 0.8, orbit_speed: 0.005, color_index: 2 },
         Planet { name: "Tierra", distance_from_sun: 60.0, radius: 1.0, orbit_speed: 0.007, color_index: 3 },
@@ -137,6 +142,7 @@ fn main() {
         Planet { name: "Urano", distance_from_sun: 140.0, radius: 1.5, orbit_speed: 0.005, color_index: 7 },
     ];
 
+    let mut focused_planet: Option<&Planet> = None;
     let mut time = 0.0;
 
     while window.is_open() {
@@ -145,39 +151,89 @@ fn main() {
         }
 
         handle_input(&window, &mut camera);
+        
+        // Detectar teclas para enfoque en un planeta
+        let planet_key_map = vec![
+            (Key::S, &planets[0]), // Sol
+            (Key::M, &planets[1]), // Mercurio
+            (Key::V, &planets[2]), // Venus
+            (Key::E, &planets[3]), // Tierra
+            (Key::R, &planets[4]), // Marte
+            (Key::J, &planets[5]), // Júpiter
+            (Key::N, &planets[6]), // Saturno
+            (Key::U, &planets[7]), // Urano
+        ];
+
+        for (key, planet) in planet_key_map {
+            if window.is_key_pressed(key, minifb::KeyRepeat::No) {
+                if focused_planet == Some(planet) {
+                    // Si ya está enfocado, volver a la vista general
+                    focused_planet = None;
+                    camera.eye = Vec3::new(50.0, 100.0, 250.0);
+                    camera.center = Vec3::new(0.0, 0.0, 0.0);
+                } else {
+                    // Enfocar en el planeta seleccionado
+                    focused_planet = Some(planet);
+                    camera.eye = Vec3::new(
+                        planet.distance_from_sun + 10.0, // Un poco más cerca
+                        planet.radius * 2.0,
+                        0.0,
+                    );
+                    camera.center = Vec3::new(
+                        planet.distance_from_sun,
+                        0.0,
+                        0.0,
+                    );
+                }
+            }
+        }
 
         framebuffer.clear();
-
         uniforms.view_matrix = create_view_matrix(camera.eye, camera.center, camera.up);
 
-        for planet in &planets {
-            let angle = planet.orbit_speed * time;
-            let translation = Vec3::new(
-                planet.distance_from_sun * angle.cos(),
-                0.0,
-                planet.distance_from_sun * angle.sin(),
+        if let Some(planet) = focused_planet {
+            // Renderizar solo el planeta enfocado
+            uniforms.model_matrix = create_model_matrix(
+                Vec3::new(planet.distance_from_sun, 0.0, 0.0),
+                planet.radius,
+                Vec3::new(0.0, 0.0, 0.0),
             );
+            render(&mut framebuffer, &uniforms, &sphere_vertex_arrays, planet.color_index);
 
-            uniforms.model_matrix = create_model_matrix(translation, planet.radius, Vec3::new(0.0, 0.0, 0.0));
-
-            // Usar el modelo correcto para Saturno
+            // Renderizar anillos si es Saturno
             if planet.name == "Saturno" {
-                render(&mut framebuffer, &uniforms, &sphere_vertex_arrays, planet.color_index);
-
-                let y_offset = 6.0;
-
-                // Ajustar la posición de los anillos
-                let rings_translation = Vec3::new(
-                    translation.x, 
-                    translation.y + y_offset, // Mismo centro en el eje Y
-                    translation.z,
+                uniforms.model_matrix = create_model_matrix(
+                    Vec3::new(planet.distance_from_sun, 6.0, 0.0),
+                    3.5, // Tamaño de los anillos
+                    Vec3::new(0.0, 0.0, 0.0),
                 );
-                let rings_scale = 3.5; // Escalar los anillos para ajustarse alrededor de la esfera
+                render(&mut framebuffer, &uniforms, &rings_vertex_arrays, planet.color_index);
+            }
+        } else {
+            // Renderizar todo el sistema solar
+            for planet in &planets {
+                let angle = planet.orbit_speed * time;
+                let translation = Vec3::new(
+                    planet.distance_from_sun * angle.cos(),
+                    0.0,
+                    planet.distance_from_sun * angle.sin(),
+                );
 
-                uniforms.model_matrix = create_model_matrix(rings_translation, rings_scale, Vec3::new(0.0, 0.0, 0.0));
-                render(&mut framebuffer, &uniforms, &rings_vertex_arrays, 8);
-            } else {
-                render(&mut framebuffer, &uniforms, &sphere_vertex_arrays, planet.color_index);
+                uniforms.model_matrix = create_model_matrix(translation, planet.radius, Vec3::new(0.0, 0.0, 0.0));
+
+                if planet.name == "Saturno" {
+                    render(&mut framebuffer, &uniforms, &sphere_vertex_arrays, planet.color_index);
+
+                    let rings_translation = Vec3::new(
+                        translation.x,
+                        translation.y + 6.0,
+                        translation.z,
+                    );
+                    uniforms.model_matrix = create_model_matrix(rings_translation, 3.5, Vec3::new(0.0, 0.0, 0.0));
+                    render(&mut framebuffer, &uniforms, &rings_vertex_arrays, planet.color_index);
+                } else {
+                    render(&mut framebuffer, &uniforms, &sphere_vertex_arrays, planet.color_index);
+                }
             }
         }
 
