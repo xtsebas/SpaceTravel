@@ -154,7 +154,7 @@ fn main() {
         
         // Detectar teclas para enfoque en un planeta
         let planet_key_map = vec![
-            (Key::S, &planets[0]), // Sol
+            //(Key::S, &planets[0]), // Sol
             (Key::M, &planets[1]), // Mercurio
             (Key::V, &planets[2]), // Venus
             (Key::E, &planets[3]), // Tierra
@@ -198,6 +198,7 @@ fn main() {
                 planet.radius,
                 Vec3::new(0.0, 0.0, 0.0),
             );
+            
             render(&mut framebuffer, &uniforms, &sphere_vertex_arrays, planet.color_index);
 
             // Renderizar anillos si es Saturno
@@ -207,8 +208,8 @@ fn main() {
                     3.5, // Tamaño de los anillos
                     Vec3::new(0.0, 0.0, 0.0),
                 );
-                render(&mut framebuffer, &uniforms, &rings_vertex_arrays, planet.color_index);
-            }
+                render_saturn_rings(&mut framebuffer, &uniforms, &rings_vertex_arrays, 8);
+            } 
         } else {
             // Renderizar todo el sistema solar
             for planet in &planets {
@@ -221,16 +222,22 @@ fn main() {
 
                 uniforms.model_matrix = create_model_matrix(translation, planet.radius, Vec3::new(0.0, 0.0, 0.0));
 
+                // Usar el modelo correcto para Saturno
                 if planet.name == "Saturno" {
                     render(&mut framebuffer, &uniforms, &sphere_vertex_arrays, planet.color_index);
 
+                    let y_offset = 6.0;
+
+                    // Ajustar la posición de los anillos
                     let rings_translation = Vec3::new(
-                        translation.x,
-                        translation.y + 6.0,
+                        translation.x, 
+                        translation.y + y_offset, // Mismo centro en el eje Y
                         translation.z,
                     );
-                    uniforms.model_matrix = create_model_matrix(rings_translation, 3.5, Vec3::new(0.0, 0.0, 0.0));
-                    render(&mut framebuffer, &uniforms, &rings_vertex_arrays, planet.color_index);
+                    let rings_scale = 3.5; // Escalar los anillos para ajustarse alrededor de la esfera
+
+                    uniforms.model_matrix = create_model_matrix(rings_translation, rings_scale, Vec3::new(0.0, 0.0, 0.0));
+                    render(&mut framebuffer, &uniforms, &rings_vertex_arrays, 8);
                 } else {
                     render(&mut framebuffer, &uniforms, &sphere_vertex_arrays, planet.color_index);
                 }
@@ -270,12 +277,6 @@ fn handle_input(window: &Window, camera: &mut Camera) {
     }
     if window.is_key_down(Key::D) {
         movement.x -= movement_speed;
-    }
-    if window.is_key_down(Key::Q) {
-        movement.y += movement_speed;
-    }
-    if window.is_key_down(Key::E) {
-        movement.y -= movement_speed;
     }
     if movement.magnitude() > 0.0 {
         camera.move_center(movement);
