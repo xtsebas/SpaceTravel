@@ -1,4 +1,5 @@
 // framebuffer.rs
+use crate::Vec3;
 
 pub struct Framebuffer {
     pub width: usize,
@@ -46,5 +47,66 @@ impl Framebuffer {
 
     pub fn set_current_color(&mut self, color: u32) {
         self.current_color = color;
+    }
+}
+
+impl Framebuffer {
+    pub fn draw_triangle(
+        &mut self,
+        v0: Vec3,
+        v1: Vec3,
+        v2: Vec3,
+        texture: &image::DynamicImage,
+    ) {
+        // Convertir las coordenadas homogéneas a coordenadas de pantalla
+        let to_screen = |v: Vec3| {
+            let x = ((v.x + 1.0) * 0.5 * self.width as f32) as usize;
+            let y = ((1.0 - (v.y + 1.0) * 0.5) * self.height as f32) as usize;
+            (x, y)
+        };
+
+        let screen_v0 = to_screen(v0);
+        let screen_v1 = to_screen(v1);
+        let screen_v2 = to_screen(v2);
+
+        // Dibujar los bordes del triángulo (opcional, puedes implementar un relleno si es necesario)
+        self.draw_line(screen_v0.0, screen_v0.1, screen_v1.0, screen_v1.1, self.current_color);
+        self.draw_line(screen_v1.0, screen_v1.1, screen_v2.0, screen_v2.1, self.current_color);
+        self.draw_line(screen_v2.0, screen_v2.1, screen_v0.0, screen_v0.1, self.current_color);
+    }
+
+    pub fn draw_line(&mut self, x0: usize, y0: usize, x1: usize, y1: usize, color: u32) {
+        // Implementación del algoritmo de Bresenham para líneas
+        let mut x0 = x0 as isize;
+        let mut y0 = y0 as isize;
+        let x1 = x1 as isize;
+        let y1 = y1 as isize;
+
+        let dx = (x1 - x0).abs();
+        let dy = -(y1 - y0).abs();
+        let mut sx = if x0 < x1 { 1 } else { -1 };
+        let mut sy = if y0 < y1 { 1 } else { -1 };
+        let mut err = dx + dy;
+
+        while x0 != x1 || y0 != y1 {
+            if x0 >= 0 && x0 < self.width as isize && y0 >= 0 && y0 < self.height as isize {
+                self.buffer[y0 as usize * self.width + x0 as usize] = color;
+            }
+            let e2 = 2 * err;
+            if e2 >= dy {
+                if x0 == x1 {
+                    break;
+                }
+                err += dy;
+                x0 += sx;
+            }
+            if e2 <= dx {
+                if y0 == y1 {
+                    break;
+                }
+                err += dx;
+                y0 += sy;
+            }
+        }
     }
 }

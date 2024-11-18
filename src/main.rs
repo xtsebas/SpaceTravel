@@ -1,9 +1,11 @@
 use nalgebra_glm::{Vec3, Mat4};
+use nalgebra::{Vector4};
 use minifb::{Key, Window, WindowOptions};
 use std::f32::consts::PI;
 use std::sync::Arc;
-use rand::Rng;
+use std::path::Path;
 use fastnoise_lite::{FastNoiseLite, NoiseType, FractalType};
+use image::{open, DynamicImage, GenericImageView};
 
 mod framebuffer;
 mod triangle;
@@ -31,6 +33,67 @@ struct Planet {
     orbit_speed: f32,
     color_index: usize,
 }
+
+struct Skybox {
+    texture: image::DynamicImage,
+}
+
+impl Skybox {
+    pub fn new(texture_path: &str) -> Self {
+        let texture = image::open(texture_path).expect("Failed to load skybox texture");
+        println!("Skybox texture loaded successfully.");
+        Skybox { texture }
+    }
+
+    pub fn render(&self, framebuffer: &mut Framebuffer) {
+        let (texture_width, texture_height) = self.texture.dimensions();
+
+        for y in 0..framebuffer.height {
+            for x in 0..framebuffer.width {
+                // Map framebuffer coordinates to texture coordinates
+                let tex_x = (x as f32 / framebuffer.width as f32 * texture_width as f32) as u32;
+                let tex_y = (y as f32 / framebuffer.height as f32 * texture_height as f32) as u32;
+
+                // Get pixel color from texture
+                if tex_x < texture_width && tex_y < texture_height {
+                    let pixel = self.texture.get_pixel(tex_x, tex_y);
+                    let color = (pixel[0] as u32) << 16 | (pixel[1] as u32) << 8 | (pixel[2] as u32);
+
+                    // Write the color to the framebuffer
+                    let index = y * framebuffer.width + x;
+                    framebuffer.buffer[index] = color;
+                }
+            }
+        }
+    }
+}
+
+fn load_texture(file_path: &str) -> DynamicImage {
+    image::open(Path::new(file_path)).expect("Failed to load texture")
+}
+
+
+fn render_skybox(framebuffer: &mut Framebuffer, skybox_texture: &DynamicImage) {
+    let (texture_width, texture_height) = skybox_texture.dimensions();
+
+    for y in 0..framebuffer.height {
+        for x in 0..framebuffer.width {
+            // Mapear las coordenadas del framebuffer a las coordenadas de la textura
+            let tex_x = (x as f32 / (framebuffer.width - 1) as f32 * (texture_width - 1) as f32) as u32;
+            let tex_y = (y as f32 / (framebuffer.height - 1) as f32 * (texture_height - 1) as f32) as u32;
+
+            // Obtener el color del píxel de la textura
+            let pixel = skybox_texture.get_pixel(tex_x, tex_y);
+            let color = (pixel[0] as u32) << 16 | (pixel[1] as u32) << 8 | (pixel[2] as u32);
+
+            // Escribir el color en el framebuffer con profundidad máxima
+            let index = y * framebuffer.width + x;
+            framebuffer.buffer[index] = color;
+            framebuffer.zbuffer[index] = std::f32::INFINITY; // Profundidad máxima
+        }
+    }
+}
+
 
 fn render(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertex_array: &[Vertex], index: usize) {
     let mut transformed_vertices = Vec::with_capacity(vertex_array.len());
@@ -118,6 +181,14 @@ fn main() {
     let rings_obj = Obj::load("assets/model/rings.obj").expect("Failed to load rings.obj");
     let rings_vertex_arrays = rings_obj.get_vertex_array();
 
+    let spaceship_obj = Obj::load("assets/model/SHIP.obj").expect("Failed to load spaceship.obj");
+    let spaceship_vertex_arrays = spaceship_obj.get_vertex_array();
+
+    // Configuración de la nave espacial
+    let mut spaceship_position = Vec3::new(0.0, -30.0, 50.0); // Posición inicial
+    let mut spaceship_rotation = Vec3::new(0.0, 0.0, 0.0);    // Rotación inicial
+    let spaceship_speed = 1.0;
+
     let noise = Arc::new(create_noise());
     let projection_matrix = create_perspective_matrix(window_width as f32, window_height as f32);
     let viewport_matrix = create_viewport_matrix(framebuffer_width as f32, framebuffer_height as f32);
@@ -144,6 +215,7 @@ fn main() {
 
     let mut focused_planet: Option<&Planet> = None;
     let mut bird_eye_view = false;
+    let skybox_texture = load_texture("assets/space.png");
     let mut time = 0.0;
 
     while window.is_open() {
@@ -171,6 +243,29 @@ fn main() {
             // Permitir el control de la cámara solo si no estamos en "bird's eye view"
             handle_input(&window, &mut camera);
         }
+
+        // Controlar la nave espacial solo en la vista principal
+        /*if focused_planet.is_none() {
+            // Controles de la nave espacial
+            /*if window.is_key_down(Key::W) {
+                spaceship_position.z -= spaceship_speed;
+            }
+            if window.is_key_down(Key::S) {
+                spaceship_position.z += spaceship_speed;
+            }
+            if window.is_key_down(Key::A) {
+                spaceship_position.x -= spaceship_speed;
+                spaceship_rotation.y -= 0.1;
+            }
+            if window.is_key_down(Key::D) {
+                spaceship_position.x += spaceship_speed;
+                spaceship_rotation.y += 0.1;
+            }*/
+
+            // Renderizar la nave espacial
+            uniforms.model_matrix = create_model_matrix(spaceship_position, 1.0, spaceship_rotation);
+            render(&mut framebuffer, &uniforms, &spaceship_vertex_arrays, 9);
+        }*/
 
         
         // Detectar teclas para enfoque en un planeta
@@ -212,6 +307,7 @@ fn main() {
 
         framebuffer.clear();
         uniforms.view_matrix = create_view_matrix(camera.eye, camera.center, camera.up);
+        render_skybox(&mut framebuffer, &skybox_texture);
 
         if let Some(planet) = focused_planet {
             // Renderizar solo el planeta enfocado

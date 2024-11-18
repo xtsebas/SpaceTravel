@@ -85,9 +85,15 @@ pub fn select_shader(index: usize, fragment: &Fragment, uniforms: &Uniforms) -> 
         6 => apply_lighting(saturn_shader(fragment, uniforms), fragment, &sun_light),
         7 => apply_lighting(uranus_shader(fragment, uniforms), fragment, &sun_light),
         8 => ring_shader(fragment).0,                 // Anillos de Saturno (sin iluminación)
+        9 => spaceship_shader(fragment, uniforms),    // Nave espacial
         _ => sun_shader().0,                          // Por defecto: el Sol
     }
 }
+
+fn spaceship_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
+    Color::new(255, 255, 255) // Color blanco como ejemplo
+}
+
 
 fn apply_lighting(base_color: Color, fragment: &Fragment, light: &Light) -> Color {
     // Vector desde el fragmento hasta la fuente de luz
@@ -324,23 +330,27 @@ fn saturn_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
 }
 
 fn mercury_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
-    // Colores para la superficie de Mercurio
-    let base_color = Color::new(169, 169, 169);  // Gris claro
-    let crater_color = Color::new(105, 105, 105);  // Gris oscuro para los cráteres
-    let highlight_color = Color::new(200, 200, 200); // Gris claro brillante para áreas iluminadas
+    // Colores personalizados para la superficie de Mercurio
+    let base_color = Color::new(190, 170, 160);  // Gris con un toque cálido
+    let crater_color = Color::new(120, 110, 100);  // Gris oscuro para los cráteres
+    let blue_highlight = Color::new(100, 130, 255); // Azul para regiones reflectantes
+    let orange_tone = Color::new(220, 140, 80); // Naranja cálido para áreas cálidas
+    let highlight_color = Color::new(240, 240, 230); // Gris claro brillante para áreas iluminadas
 
-    // Configuración del ruido para los cráteres
-    let zoom = 20.0;
+    // Configuración del ruido para los cráteres y variaciones de superficie
+    let zoom = 40.0; // Más detalle para la textura
     let noise_value = uniforms.noise.get_noise_2d(
         fragment.vertex_position.x * zoom,
         fragment.vertex_position.y * zoom,
     );
 
     // Decidir el color del fragmento basándose en el ruido
-    let base_fragment_color = if noise_value < -0.2 {
-        crater_color.lerp(&base_color, (noise_value + 0.2).clamp(0.0, 1.0))
+    let base_fragment_color = if noise_value < -0.3 {
+        crater_color.lerp(&base_color, (noise_value + 0.3).clamp(0.0, 1.0))
+    } else if noise_value > 0.3 {
+        base_color.lerp(&blue_highlight, noise_value.clamp(0.0, 1.0))
     } else {
-        base_color.lerp(&highlight_color, noise_value.clamp(0.0, 1.0))
+        base_color.lerp(&orange_tone, (noise_value + 0.3).clamp(0.0, 1.0))
     };
 
     // Calcular la dirección de la luz desde el fragmento hacia el Sol
@@ -355,19 +365,20 @@ fn mercury_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
 
     // Calcular la atenuación de la luz basada en la distancia al Sol
     let distance = (sun_position - fragment.vertex_position).magnitude();
-    let attenuation = 1.0 / (1.0 + 0.1 * distance + 0.02 * distance * distance);
+    let attenuation = 1.0 / (1.0 + 0.05 * distance + 0.01 * distance * distance);
 
     // Modificar el color final basado en la intensidad y atenuación de la luz
     let lit_color = base_fragment_color * diffuse_intensity * attenuation;
 
     // Añadir un término ambiental para evitar que las partes no iluminadas sean completamente oscuras
-    let ambient_intensity = 0.15; // Intensidad de luz ambiental
+    let ambient_intensity = 0.2; // Intensidad de luz ambiental
     let ambient_color = base_fragment_color * ambient_intensity;
 
     // Suma del componente ambiental y difuso
     let combined_color = ambient_color + lit_color;
 
-    combined_color
+    // Asegurarse de que el color no exceda los límites permitidos
+    combined_color.clamp(Color::new(0, 0, 0), Color::new(255, 255, 255))
 }
 
 
