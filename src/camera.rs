@@ -16,7 +16,7 @@ impl Camera {
       center,
       up,
       has_changed: true,
-      fov: 60.0,
+      fov: 100.0,
     }
   }
 
