@@ -357,6 +357,7 @@ fn handle_input(window: &Window, camera: &mut Camera, planets: &[Planet]) {
     let movement_speed = 0.05;
     let zoom_speed = 0.5;
     let rotation_speed = PI / 100.0;
+    let roll_speed = PI / 200.0;
 
     if window.is_key_down(Key::Left) {
         camera.orbit(rotation_speed, 0.0);
@@ -377,10 +378,12 @@ fn handle_input(window: &Window, camera: &mut Camera, planets: &[Planet]) {
     let mut movement = Vec3::new(0.0, 0.0, 0.0);
 
     if window.is_key_down(Key::A) {
-        movement -= right * movement_speed; // Mover hacia la izquierda
+        camera.up = nalgebra_glm::rotate_vec3(&camera.up, roll_speed, &forward);
+        movement += right * movement_speed; // Mover hacia la izquierda
     }
     if window.is_key_down(Key::D) {
-        movement += right * movement_speed; // Mover hacia la derecha
+        camera.up = nalgebra_glm::rotate_vec3(&camera.up, -roll_speed, &forward);
+        movement -= right * movement_speed; // Mover hacia la derecha
     }
 
     // Verificar colisiones antes de mover la cámara
