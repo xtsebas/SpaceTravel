@@ -1,4 +1,4 @@
-use nalgebra_glm::{Vec3, Mat4};
+use nalgebra_glm::{Vec3, Mat4, Vec4};
 use nalgebra::{Vector4};
 use minifb::{Key, Window, WindowOptions};
 use std::f32::consts::PI;
@@ -111,6 +111,45 @@ fn render_saturn_rings(framebuffer: &mut Framebuffer, uniforms: &Uniforms, verte
         ring_uniforms.model_matrix = create_model_matrix(ring_translation, 0.2, Vec3::new(0.0, 0.0, 0.0));
 
         render(framebuffer, &ring_uniforms, vertex_array, index);
+    }
+}
+
+fn draw_orbit(
+    framebuffer: &mut Framebuffer,
+    planet: &Planet,
+    uniforms: &Uniforms,
+    segments: usize, // Número de segmentos del círculo
+    color: u32,
+) {
+    let mut previous_screen_point = None;
+
+    // Radio de la órbita (distancia al sol)
+    let orbit_radius = planet.distance_from_sun;
+
+    // Generar puntos en el plano XZ
+    for i in 0..=segments {
+        let angle = 2.0 * PI * (i as f32 / segments as f32);
+
+        // Punto 3D en el espacio
+        let point_3d = Vec3::new(orbit_radius * angle.cos(), 0.0, orbit_radius * angle.sin());
+
+        // Transformar el punto usando las matrices de modelo, vista y proyección
+        let transformed_point = uniforms.viewport_matrix
+            * uniforms.projection_matrix
+            * uniforms.view_matrix
+            * Vec4::new(point_3d.x, point_3d.y, point_3d.z, 1.0);
+
+        // Convertir de coordenadas homogéneas a coordenadas de pantalla
+        let screen_x = ((transformed_point.x / transformed_point.w + 1.0) * 0.5 * framebuffer.width as f32) as usize;
+        let screen_y = ((1.0 - (transformed_point.y / transformed_point.w + 1.0) * 0.5) * framebuffer.height as f32) as usize;
+
+        // Dibujar una línea entre el punto actual y el anterior
+        if let Some((prev_x, prev_y)) = previous_screen_point {
+            framebuffer.draw_line(prev_x, prev_y, screen_x, screen_y, color);
+        }
+
+        // Actualizar el punto previo
+        previous_screen_point = Some((screen_x, screen_y));
     }
 }
 
@@ -316,6 +355,8 @@ fn main() {
         } else {
             // Renderizar todo el sistema solar
             for planet in &planets {
+                draw_orbit(&mut framebuffer, planet, &uniforms, 100, 0xAAAAAA);
+
                 let angle = planet.orbit_speed * time;
                 let translation = Vec3::new(
                     planet.distance_from_sun * angle.cos(),

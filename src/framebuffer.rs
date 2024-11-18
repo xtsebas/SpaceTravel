@@ -76,6 +76,42 @@ impl Framebuffer {
             self.draw_char(x + i * 8 * scale, y, c, color, scale);
         }
     }
+
+    pub fn draw_circle(&mut self, cx: usize, cy: usize, radius: usize, color: u32) {
+        let mut x = radius as isize;
+        let mut y = 0;
+        let mut err = 0;
+
+        while x >= y {
+            self.plot_circle_points(cx, cy, x, y, color);
+
+            y += 1;
+            err += 1 + 2 * y;
+            if 2 * (err - x) + 1 > 0 {
+                x -= 1;
+                err += 1 - 2 * x;
+            }
+        }
+    }
+
+    fn plot_circle_points(&mut self, cx: usize, cy: usize, x: isize, y: isize, color: u32) {
+        let points = [
+            (cx as isize + x, cy as isize + y),
+            (cx as isize - x, cy as isize + y),
+            (cx as isize + x, cy as isize - y),
+            (cx as isize - x, cy as isize - y),
+            (cx as isize + y, cy as isize + x),
+            (cx as isize - y, cy as isize + x),
+            (cx as isize + y, cy as isize - x),
+            (cx as isize - y, cy as isize - x),
+        ];
+
+        for (px, py) in points {
+            if px >= 0 && px < self.width as isize && py >= 0 && py < self.height as isize {
+                self.buffer[py as usize * self.width + px as usize] = color;
+            }
+        }
+    }
 }    
 
 impl Framebuffer {
