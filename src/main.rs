@@ -34,40 +34,6 @@ struct Planet {
     color_index: usize,
 }
 
-struct Skybox {
-    texture: image::DynamicImage,
-}
-
-impl Skybox {
-    pub fn new(texture_path: &str) -> Self {
-        let texture = image::open(texture_path).expect("Failed to load skybox texture");
-        println!("Skybox texture loaded successfully.");
-        Skybox { texture }
-    }
-
-    pub fn render(&self, framebuffer: &mut Framebuffer) {
-        let (texture_width, texture_height) = self.texture.dimensions();
-
-        for y in 0..framebuffer.height {
-            for x in 0..framebuffer.width {
-                // Map framebuffer coordinates to texture coordinates
-                let tex_x = (x as f32 / framebuffer.width as f32 * texture_width as f32) as u32;
-                let tex_y = (y as f32 / framebuffer.height as f32 * texture_height as f32) as u32;
-
-                // Get pixel color from texture
-                if tex_x < texture_width && tex_y < texture_height {
-                    let pixel = self.texture.get_pixel(tex_x, tex_y);
-                    let color = (pixel[0] as u32) << 16 | (pixel[1] as u32) << 8 | (pixel[2] as u32);
-
-                    // Write the color to the framebuffer
-                    let index = y * framebuffer.width + x;
-                    framebuffer.buffer[index] = color;
-                }
-            }
-        }
-    }
-}
-
 fn load_texture(file_path: &str) -> DynamicImage {
     image::open(Path::new(file_path)).expect("Failed to load texture")
 }
