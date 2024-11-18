@@ -118,6 +118,25 @@ fn interpolate_position(start: Vec3, end: Vec3, t: f32) -> Vec3 {
     start * (1.0 - t) + end * t
 }
 
+fn is_in_camera_view(camera: &Camera, object_position: Vec3, object_radius: f32) -> bool {
+    let view_vector = (object_position - camera.eye).normalize();
+    let camera_forward = (camera.center - camera.eye).normalize();
+    let dot_product = view_vector.dot(&camera_forward);
+
+    // Convertir el FOV de grados a radianes y calcular el coseno del ángulo
+    let fov_radians = camera.fov.to_radians() / 2.0;
+    dot_product > fov_radians.cos()
+}
+
+fn is_collision(camera_position: Vec3, object_position: Vec3, object_radius: f32) -> bool {
+    // Calcular la distancia entre la cámara y el objeto
+    let distance = (camera_position - object_position).magnitude();
+    
+    // Verificar si la distancia es menor que el radio del objeto más un margen
+    distance < object_radius + 5.0 // Agregar un margen de seguridad
+}
+
+
 fn main() {
     let window_width = 800;
     let window_height = 600;
@@ -207,7 +226,7 @@ fn main() {
 
         if !bird_eye_view {
             // Permitir el control de la cámara solo si no estamos en "bird's eye view"
-            handle_input(&window, &mut camera);
+            handle_input(&window, &mut camera, &planets);
         }
 
         // Controlar la nave espacial solo en la vista principal
@@ -303,29 +322,26 @@ fn main() {
                     0.0,
                     planet.distance_from_sun * angle.sin(),
                 );
-
-                uniforms.model_matrix = create_model_matrix(translation, planet.radius, Vec3::new(0.0, 0.0, 0.0));
-
-                // Usar el modelo correcto para Saturno
-                if planet.name == "Saturno" {
+            
+                if is_in_camera_view(&camera, translation, planet.radius) {
+                    uniforms.model_matrix = create_model_matrix(translation, planet.radius, Vec3::new(0.0, 0.0, 0.0));
                     render(&mut framebuffer, &uniforms, &sphere_vertex_arrays, planet.color_index);
-
-                    let y_offset = 6.0;
-
-                    // Ajustar la posición de los anillos
-                    let rings_translation = Vec3::new(
-                        translation.x, 
-                        translation.y + y_offset, // Mismo centro en el eje Y
-                        translation.z,
-                    );
-                    let rings_scale = 3.5; // Escalar los anillos para ajustarse alrededor de la esfera
-
-                    uniforms.model_matrix = create_model_matrix(rings_translation, rings_scale, Vec3::new(0.0, 0.0, 0.0));
-                    render(&mut framebuffer, &uniforms, &rings_vertex_arrays, 8);
-                } else {
-                    render(&mut framebuffer, &uniforms, &sphere_vertex_arrays, planet.color_index);
+            
+                    // Renderizar los anillos de Saturno si el planeta es visible
+                    if planet.name == "Saturno" {
+                        let y_offset = 6.0;
+                        let rings_translation = Vec3::new(
+                            translation.x,
+                            translation.y + y_offset,
+                            translation.z,
+                        );
+                        let rings_scale = 3.5;
+            
+                        uniforms.model_matrix = create_model_matrix(rings_translation, rings_scale, Vec3::new(0.0, 0.0, 0.0));
+                        render(&mut framebuffer, &uniforms, &rings_vertex_arrays, 8);
+                    }
                 }
-            }
+            }            
         }
 
         time += 1.0;
@@ -337,10 +353,10 @@ fn main() {
 }
 
 
-fn handle_input(window: &Window, camera: &mut Camera) {
-    let movement_speed = 1.0;
-    let rotation_speed = PI / 50.0;
-    let zoom_speed = 1.0;
+fn handle_input(window: &Window, camera: &mut Camera, planets: &[Planet]) {
+    let movement_speed = 0.05;
+    let zoom_speed = 0.5;
+    let rotation_speed = PI / 100.0;
 
     if window.is_key_down(Key::Left) {
         camera.orbit(rotation_speed, 0.0);
@@ -355,13 +371,30 @@ fn handle_input(window: &Window, camera: &mut Camera) {
         camera.orbit(0.0, rotation_speed);
     }
 
+    // Calcular el movimiento lateral (A y D)
+    let forward = (camera.center - camera.eye).normalize();
+    let right = forward.cross(&camera.up).normalize();
     let mut movement = Vec3::new(0.0, 0.0, 0.0);
+
     if window.is_key_down(Key::A) {
-        movement.x += movement_speed;
+        movement -= right * movement_speed; // Mover hacia la izquierda
     }
     if window.is_key_down(Key::D) {
-        movement.x -= movement_speed;
+        movement += right * movement_speed; // Mover hacia la derecha
     }
+
+    // Verificar colisiones antes de mover la cámara
+    let mut new_camera_center = camera.center + movement;
+    for planet in planets {
+        let angle = planet.orbit_speed * 0.0; // Asume que planetas no rotan al verificar colisión
+        let planet_position = Vec3::new(
+            planet.distance_from_sun * angle.cos(),
+            0.0,
+            planet.distance_from_sun * angle.sin(),
+        );
+    }
+
+    // Mover la cámara solo si no hay colisión
     if movement.magnitude() > 0.0 {
         camera.move_center(movement);
     }

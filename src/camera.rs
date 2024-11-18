@@ -5,7 +5,8 @@ pub struct Camera {
   pub eye: Vec3,
   pub center: Vec3,
   pub up: Vec3,
-  pub has_changed: bool
+  pub has_changed: bool,
+  pub fov: f32,
 }
 
 impl Camera {
@@ -15,6 +16,7 @@ impl Camera {
       center,
       up,
       has_changed: true,
+      fov: 60.0,
     }
   }
 
@@ -82,5 +84,12 @@ impl Camera {
     } else {
       false
     }
+  }
+}
+
+impl Camera {
+  pub fn set_fov(&mut self, fov: f32) {
+      self.fov = fov.clamp(30.0, 120.0); // Limitar el FOV a un rango razonable
+      self.has_changed = true;
   }
 }
