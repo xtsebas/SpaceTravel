@@ -7,6 +7,7 @@ name = "SpaceTravel"
 version = "0.1.0"
 dependencies = [
  "fastnoise-lite",
+ "font8x8",
  "image",
  "minifb",
  "nalgebra 0.32.6",
@@ -226,6 +227,12 @@ dependencies = [
  "crc32fast",
  "miniz_oxide",
 ]
+
+[[package]]
+name = "font8x8"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e63201c624b8c8883921b1a1accc8916c4fa9dbfb15d122b26e4dde945b86bbf"
 
 [[package]]
 name = "futures"

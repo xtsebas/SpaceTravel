@@ -346,6 +346,19 @@ fn main() {
 
         time += 1.0;
 
+        // Determinar la vista actual
+        let current_view = if let Some(planet) = focused_planet {
+            planet.name.to_string()
+        } else if bird_eye_view {
+            "BIRD EYE".to_string()
+        } else {
+            "NAVE".to_string()
+        };
+
+        // Dibujar el texto en la esquina superior izquierda
+        let text_color = 0xFFFFFF; // Blanco
+        framebuffer.draw_text(10, 10, &current_view, text_color, 3);
+
         window
             .update_with_buffer(&framebuffer.buffer, framebuffer_width, framebuffer_height)
             .unwrap();
@@ -360,10 +373,10 @@ fn handle_input(window: &Window, camera: &mut Camera, planets: &[Planet]) {
     let roll_speed = PI / 200.0;
 
     if window.is_key_down(Key::Left) {
-        camera.orbit(rotation_speed, 0.0);
+        camera.orbit(-rotation_speed, 0.0);
     }
     if window.is_key_down(Key::Right) {
-        camera.orbit(-rotation_speed, 0.0);
+        camera.orbit(rotation_speed, 0.0);
     }
     if window.is_key_down(Key::W) {
         camera.orbit(0.0, -rotation_speed);

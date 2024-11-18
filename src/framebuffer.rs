@@ -1,5 +1,7 @@
 // framebuffer.rs
 use crate::Vec3;
+use font8x8::BASIC_FONTS;
+use font8x8::UnicodeFonts;
 
 pub struct Framebuffer {
     pub width: usize,
@@ -48,7 +50,33 @@ impl Framebuffer {
     pub fn set_current_color(&mut self, color: u32) {
         self.current_color = color;
     }
-}
+
+    pub fn draw_char(&mut self, x: usize, y: usize, c: char, color: u32, scale: usize) {
+        if let Some(font) = BASIC_FONTS.get(c) {
+            for (row, byte) in font.iter().enumerate() {
+                for col in 0..8 {
+                    if (byte >> col) & 1 == 1 {
+                        for sx in 0..scale {
+                            for sy in 0..scale {
+                                let px = x + col * scale - sx;
+                                let py = y + row * scale + sy;
+                                if px < self.width && py < self.height {
+                                    self.buffer[py * self.width + px] = color;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    pub fn draw_text(&mut self, x: usize, y: usize, text: &str, color: u32, scale: usize) {
+        for (i, c) in text.chars().enumerate() {
+            self.draw_char(x + i * 8 * scale, y, c, color, scale);
+        }
+    }
+}    
 
 impl Framebuffer {
     pub fn draw_triangle(
