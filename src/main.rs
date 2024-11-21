@@ -118,40 +118,49 @@ fn draw_orbit(
     framebuffer: &mut Framebuffer,
     planet: &Planet,
     uniforms: &Uniforms,
-    segments: usize, // Número de segmentos del círculo
+    segments: usize,
     color: u32,
 ) {
     let mut previous_screen_point = None;
 
-    // Radio de la órbita (distancia al sol)
-    let orbit_radius = planet.distance_from_sun;
-
-    // Generar puntos en el plano XZ
     for i in 0..=segments {
         let angle = 2.0 * PI * (i as f32 / segments as f32);
 
-        // Punto 3D en el espacio
-        let point_3d = Vec3::new(orbit_radius * angle.cos(), 0.0, orbit_radius * angle.sin());
+        // Calcular la posición 3D del punto en la órbita
+        let orbit_point = Vec3::new(
+            planet.distance_from_sun * angle.cos(),
+            0.0,
+            planet.distance_from_sun * angle.sin(),
+        );
 
-        // Transformar el punto usando las matrices de modelo, vista y proyección
+
+        // Transformar el punto
         let transformed_point = uniforms.viewport_matrix
             * uniforms.projection_matrix
             * uniforms.view_matrix
-            * Vec4::new(point_3d.x, point_3d.y, point_3d.z, 1.0);
+            * Vec4::new(orbit_point.x, orbit_point.y, orbit_point.z, 1.0);
 
-        // Convertir de coordenadas homogéneas a coordenadas de pantalla
-        let screen_x = ((transformed_point.x / transformed_point.w + 1.0) * 0.5 * framebuffer.width as f32) as usize;
-        let screen_y = ((1.0 - (transformed_point.y / transformed_point.w + 1.0) * 0.5) * framebuffer.height as f32) as usize;
+        // Convertir a coordenadas de pantalla
+        if transformed_point.w != 0.0 {
+            let screen_x = ((transformed_point.x / transformed_point.w + 1.0) * 0.5 * framebuffer.width as f32) as isize;
+            let screen_y = ((1.0 - (transformed_point.y / transformed_point.w + 1.0) * 0.5) * framebuffer.height as f32) as isize;
 
-        // Dibujar una línea entre el punto actual y el anterior
-        if let Some((prev_x, prev_y)) = previous_screen_point {
-            framebuffer.draw_line(prev_x, prev_y, screen_x, screen_y, color);
+
+            // Validar y dibujar
+            if screen_x >= 0 && screen_y >= 0 {
+                let screen_x = screen_x as usize;
+                let screen_y = screen_y as usize;
+
+                if let Some((prev_x, prev_y)) = previous_screen_point {
+                    framebuffer.draw_line(prev_x, prev_y, screen_x, screen_y, color);
+                }
+
+                previous_screen_point = Some((screen_x, screen_y));
+            }
         }
-
-        // Actualizar el punto previo
-        previous_screen_point = Some((screen_x, screen_y));
     }
 }
+
 
 fn interpolate_position(start: Vec3, end: Vec3, t: f32) -> Vec3 {
     start * (1.0 - t) + end * t
@@ -209,7 +218,7 @@ fn main() {
     let spaceship_vertex_arrays = spaceship_obj.get_vertex_array();
 
     // Configuración de la nave espacial
-    let mut spaceship_position = Vec3::new(0.0, -30.0, 50.0); // Posición inicial
+    let mut spaceship_position = Vec3::new(50.0, 100.0, 250.0); // Posición inicial
     let mut spaceship_rotation = Vec3::new(0.0, 0.0, 0.0);    // Rotación inicial
     let spaceship_speed = 1.0;
 
@@ -240,6 +249,8 @@ fn main() {
     let mut focused_planet: Option<&Planet> = None;
     let mut bird_eye_view = false;
     let skybox_texture = load_texture("assets/space.png");
+    let mut prev_mouse_x = None;
+    let mut mouse_active = false;
     let mut time = 0.0;
 
     while window.is_open() {
@@ -265,7 +276,7 @@ fn main() {
 
         if !bird_eye_view {
             // Permitir el control de la cámara solo si no estamos en "bird's eye view"
-            handle_input(&window, &mut camera, &planets);
+            handle_input(&window, &mut camera, &planets, &mut prev_mouse_x, &mut mouse_active);
         }
 
         // Controlar la nave espacial solo en la vista principal
@@ -407,7 +418,7 @@ fn main() {
 }
 
 
-fn handle_input(window: &Window, camera: &mut Camera, planets: &[Planet]) {
+fn handle_input(window: &Window, camera: &mut Camera, planets: &[Planet],  prev_mouse_pos: &mut Option<(f32, f32)>, mouse_active: &mut bool) {
     let movement_speed = 0.05;
     let zoom_speed = 0.5;
     let rotation_speed = PI / 100.0;
@@ -419,45 +430,66 @@ fn handle_input(window: &Window, camera: &mut Camera, planets: &[Planet]) {
     if window.is_key_down(Key::Right) {
         camera.orbit(rotation_speed, 0.0);
     }
-    if window.is_key_down(Key::W) {
-        camera.orbit(0.0, -rotation_speed);
-    }
-    if window.is_key_down(Key::S) {
-        camera.orbit(0.0, rotation_speed);
-    }
+
 
     // Calcular el movimiento lateral (A y D)
     let forward = (camera.center - camera.eye).normalize();
     let right = forward.cross(&camera.up).normalize();
     let mut movement = Vec3::new(0.0, 0.0, 0.0);
 
-    if window.is_key_down(Key::A) {
-        movement += right * movement_speed; // Mover hacia la izquierda
-    }
-    if window.is_key_down(Key::D) {
-        movement -= right * movement_speed; // Mover hacia la derecha
-    }
-
-    // Verificar colisiones antes de mover la cámara
-    let mut new_camera_center = camera.center + movement;
-    for planet in planets {
-        let angle = planet.orbit_speed * 0.0; // Asume que planetas no rotan al verificar colisión
-        let planet_position = Vec3::new(
-            planet.distance_from_sun * angle.cos(),
-            0.0,
-            planet.distance_from_sun * angle.sin(),
-        );
+    // Alternar el estado de `mouse_active` al hacer clic
+    if window.get_mouse_down(minifb::MouseButton::Left) {
+        if let Some((mouse_x, mouse_y)) = window.get_mouse_pos(minifb::MouseMode::Clamp) {
+            if mouse_x >= 0.0 && mouse_x <= window.get_size().0 as f32
+                && mouse_y >= 0.0 && mouse_y <= window.get_size().1 as f32
+            {
+                *mouse_active = !*mouse_active;
+            }
+        }
     }
 
+    if *mouse_active {
+        // Obtener la posición del mouse solo si está activo
+        if let Some((mouse_x, mouse_y)) = window.get_mouse_pos(minifb::MouseMode::Clamp) {
+            if mouse_x >= 0.0 && mouse_x <= window.get_size().0 as f32
+                && mouse_y >= 0.0 && mouse_y <= window.get_size().1 as f32
+            {
+                if let Some((prev_x, prev_y)) = *prev_mouse_pos {
+                    let delta_x = mouse_x - prev_x;
+                    let delta_y = mouse_y - prev_y;
+
+                    // Movimiento lateral según el desplazamiento horizontal del mouse
+                    let forward = (camera.center - camera.eye).normalize();
+                    let right = forward.cross(&camera.up).normalize();
+                    let lateral_movement = right * (-delta_x) * movement_speed;
+
+                    camera.move_center(lateral_movement); // Actualizar la posición de la cámara
+
+                    // Rotación hacia arriba/abajo según el desplazamiento vertical del mouse
+                    camera.orbit(0.0, delta_y * rotation_speed);
+                }
+
+                // Actualizar la posición previa del mouse
+                *prev_mouse_pos = Some((mouse_x, mouse_y));
+            } else {
+                // Si el mouse está fuera de la ventana, desactivar
+                *mouse_active = false;
+                *prev_mouse_pos = None;
+            }
+        }
+    } else {
+        // Resetear posición previa si no está activo
+        *prev_mouse_pos = None;
+    }
     // Mover la cámara solo si no hay colisión
     if movement.magnitude() > 0.0 {
         camera.move_center(movement);
     }
 
-    if window.is_key_down(Key::Up) {
+    if window.is_key_down(Key::W) {
         camera.zoom(zoom_speed);
     }
-    if window.is_key_down(Key::Down) {
+    if window.is_key_down(Key::S) {
         camera.zoom(-zoom_speed);
     }
 }
