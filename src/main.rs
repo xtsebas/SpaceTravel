@@ -161,10 +161,10 @@ fn draw_orbit(
     }
 }
 
-
-fn interpolate_position(start: Vec3, end: Vec3, t: f32) -> Vec3 {
+fn lerp(start: Vec3, end: Vec3, t: f32) -> Vec3 {
     start * (1.0 - t) + end * t
 }
+
 
 fn is_in_camera_view(camera: &Camera, object_position: Vec3, object_radius: f32) -> bool {
     let view_vector = (object_position - camera.eye).normalize();
@@ -175,15 +175,6 @@ fn is_in_camera_view(camera: &Camera, object_position: Vec3, object_radius: f32)
     let fov_radians = camera.fov.to_radians() / 2.0;
     dot_product > fov_radians.cos()
 }
-
-fn is_collision(camera_position: Vec3, object_position: Vec3, object_radius: f32) -> bool {
-    // Calcular la distancia entre la cámara y el objeto
-    let distance = (camera_position - object_position).magnitude();
-    
-    // Verificar si la distancia es menor que el radio del objeto más un margen
-    distance < object_radius + 5.0 // Agregar un margen de seguridad
-}
-
 
 fn main() {
     let window_width = 800;
@@ -214,14 +205,6 @@ fn main() {
     let rings_obj = Obj::load("assets/model/rings.obj").expect("Failed to load rings.obj");
     let rings_vertex_arrays = rings_obj.get_vertex_array();
 
-    let spaceship_obj = Obj::load("assets/model/SHIP.obj").expect("Failed to load spaceship.obj");
-    let spaceship_vertex_arrays = spaceship_obj.get_vertex_array();
-
-    // Configuración de la nave espacial
-    let mut spaceship_position = Vec3::new(50.0, 100.0, 250.0); // Posición inicial
-    let mut spaceship_rotation = Vec3::new(0.0, 0.0, 0.0);    // Rotación inicial
-    let spaceship_speed = 1.0;
-
     let noise = Arc::new(create_noise());
     let projection_matrix = create_perspective_matrix(window_width as f32, window_height as f32);
     let viewport_matrix = create_viewport_matrix(framebuffer_width as f32, framebuffer_height as f32);
@@ -251,6 +234,10 @@ fn main() {
     let skybox_texture = load_texture("assets/space.png");
     let mut prev_mouse_x = None;
     let mut mouse_active = false;
+    let mut transitioning = false;
+    let mut transition_target_eye = camera.eye;
+    let mut transition_target_center = camera.center;
+    let mut transition_speed = 0.05;
     let mut time = 0.0;
 
     while window.is_open() {
@@ -262,50 +249,23 @@ fn main() {
         if window.is_key_pressed(Key::B, minifb::KeyRepeat::No) {
             bird_eye_view = !bird_eye_view;
             if bird_eye_view {
-                camera = Camera::new(
-                    Vec3::new(00.0, 500.0, 200.0), // Posición inicial
-                    Vec3::new(0.0, 0.0, 0.0),    // Centro (sol)
-                    Vec3::new(0.0, 1.0, 0.0),
-                );
+                transition_target_eye = Vec3::new(0.0, 500.0, 200.0);
+                transition_target_center = Vec3::new(0.0, 0.0, 0.0);
+                transitioning = true;
             } else {
-                // Restaurar la cámara a su posición inicial
-                camera.eye = Vec3::new(50.0, 100.0, 250.0);
-                camera.center = Vec3::new(0.0, 0.0, 0.0);
+                transition_target_eye = Vec3::new(50.0, 100.0, 250.0);
+                transition_target_center = Vec3::new(0.0, 0.0, 0.0);
+                transitioning = true;
             }
         }
 
-        if !bird_eye_view {
-            // Permitir el control de la cámara solo si no estamos en "bird's eye view"
+        if !bird_eye_view && !transitioning {
+            // Permitir el control de la cámara solo si no estamos en "bird's eye view" y no estamos en transición
             handle_input(&window, &mut camera, &planets, &mut prev_mouse_x, &mut mouse_active);
         }
 
-        // Controlar la nave espacial solo en la vista principal
-        /*if focused_planet.is_none() {
-            // Controles de la nave espacial
-            /*if window.is_key_down(Key::W) {
-                spaceship_position.z -= spaceship_speed;
-            }
-            if window.is_key_down(Key::S) {
-                spaceship_position.z += spaceship_speed;
-            }
-            if window.is_key_down(Key::A) {
-                spaceship_position.x -= spaceship_speed;
-                spaceship_rotation.y -= 0.1;
-            }
-            if window.is_key_down(Key::D) {
-                spaceship_position.x += spaceship_speed;
-                spaceship_rotation.y += 0.1;
-            }*/
-
-            // Renderizar la nave espacial
-            uniforms.model_matrix = create_model_matrix(spaceship_position, 1.0, spaceship_rotation);
-            render(&mut framebuffer, &uniforms, &spaceship_vertex_arrays, 9);
-        }*/
-
-        
         // Detectar teclas para enfoque en un planeta
         let planet_key_map = vec![
-            //(Key::S, &planets[0]), // Sol
             (Key::M, &planets[1]), // Mercurio
             (Key::V, &planets[2]), // Venus
             (Key::E, &planets[3]), // Tierra
@@ -320,23 +280,36 @@ fn main() {
                 if focused_planet == Some(planet) {
                     // Si ya está enfocado, volver a la vista general
                     focused_planet = None;
-                    camera.eye = Vec3::new(50.0, 100.0, 250.0);
-                    camera.center = Vec3::new(0.0, 0.0, 0.0);
-                    bird_eye_view = false;
+                    transition_target_eye = Vec3::new(50.0, 100.0, 250.0);
+                    transition_target_center = Vec3::new(0.0, 0.0, 0.0);
+                    transitioning = true;
                 } else {
                     // Enfocar en el planeta seleccionado
                     focused_planet = Some(planet);
-                    camera.eye = Vec3::new(
-                        planet.distance_from_sun + 10.0, // Un poco más cerca
+                    transition_target_eye = Vec3::new(
+                        planet.distance_from_sun + 20.0,
                         planet.radius * 2.0,
                         0.0,
                     );
-                    camera.center = Vec3::new(
+                    transition_target_center = Vec3::new(
                         planet.distance_from_sun,
                         0.0,
                         0.0,
                     );
+                    transitioning = true;
                 }
+            }
+        }
+
+        // Interpolar la posición de la cámara durante la transición
+        if transitioning {
+            camera.eye = lerp(camera.eye, transition_target_eye, transition_speed);
+            camera.center = lerp(camera.center, transition_target_center, transition_speed);
+
+            if (camera.eye - transition_target_eye).magnitude() < 0.1
+                && (camera.center - transition_target_center).magnitude() < 0.1
+            {
+                transitioning = false;
             }
         }
 
@@ -351,18 +324,18 @@ fn main() {
                 planet.radius,
                 Vec3::new(0.0, 0.0, 0.0),
             );
-            
+
             render(&mut framebuffer, &uniforms, &sphere_vertex_arrays, planet.color_index);
 
             // Renderizar anillos si es Saturno
             if planet.name == "Saturno" {
                 uniforms.model_matrix = create_model_matrix(
-                    Vec3::new(planet.distance_from_sun, 6.0, 0.0),
+                    Vec3::new(planet.distance_from_sun, 0.0, 0.0),
                     3.5, // Tamaño de los anillos
                     Vec3::new(0.0, 0.0, 0.0),
                 );
                 render_saturn_rings(&mut framebuffer, &uniforms, &rings_vertex_arrays, 8);
-            } 
+            }
         } else {
             // Renderizar todo el sistema solar
             for planet in &planets {
@@ -374,11 +347,11 @@ fn main() {
                     0.0,
                     planet.distance_from_sun * angle.sin(),
                 );
-            
+
                 if is_in_camera_view(&camera, translation, planet.radius) {
                     uniforms.model_matrix = create_model_matrix(translation, planet.radius, Vec3::new(0.0, 0.0, 0.0));
                     render(&mut framebuffer, &uniforms, &sphere_vertex_arrays, planet.color_index);
-            
+
                     // Renderizar los anillos de Saturno si el planeta es visible
                     if planet.name == "Saturno" {
                         let y_offset = 6.0;
@@ -388,12 +361,12 @@ fn main() {
                             translation.z,
                         );
                         let rings_scale = 3.5;
-            
+
                         uniforms.model_matrix = create_model_matrix(rings_translation, rings_scale, Vec3::new(0.0, 0.0, 0.0));
                         render(&mut framebuffer, &uniforms, &rings_vertex_arrays, 8);
                     }
                 }
-            }            
+            }
         }
 
         time += 1.0;
@@ -415,14 +388,14 @@ fn main() {
             .update_with_buffer(&framebuffer.buffer, framebuffer_width, framebuffer_height)
             .unwrap();
     }
+
 }
 
 
 fn handle_input(window: &Window, camera: &mut Camera, planets: &[Planet],  prev_mouse_pos: &mut Option<(f32, f32)>, mouse_active: &mut bool) {
-    let movement_speed = 0.05;
+    let movement_speed = 0.022;
     let zoom_speed = 0.5;
-    let rotation_speed = PI / 100.0;
-    let roll_speed = PI / 200.0;
+    let rotation_speed = PI / 200.0;
 
     if window.is_key_down(Key::Left) {
         camera.orbit(-rotation_speed, 0.0);
